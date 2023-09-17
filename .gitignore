@@ -163,5 +163,8 @@ cython_debug/
 #Datasets
 data/
 
+#Models
+models/
+
 #DS_Store
 .DS_Store
