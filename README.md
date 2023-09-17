@@ -1,5 +1,4 @@
-# IntelligentSearch
-Welcome to Intelligent Search
+# Welcome to Intelligent Search
 
 Intelligent Search is a powerful solution harnessing the capabilities of artificial intelligence to revolutionize the way information is accessed and utilized. Our platform breaks down data silos, empowering both employees and customers to effortlessly locate the information they need, swiftly and efficiently.
 
