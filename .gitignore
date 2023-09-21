@@ -164,7 +164,8 @@ cython_debug/
 # data/
 
 #Models
-models/
+# models/
+models/sentence-transformers_all-MiniLM-L6-v2
 
 #DS_Store
 .DS_Store
