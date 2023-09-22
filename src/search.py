@@ -16,25 +16,17 @@ offers_df['RETAILER'] = offers_df['RETAILER'].str.strip().str.lower()
 obj_semantic_search = SemanticSearch()
 
 def find_match(input_query):
-    # Filter the dataframe using masks
-    # m1 = offers_df["RETAILER"].str.contains(input_query)
-    # m2 = offers_df["BRAND"].str.contains(input_query)
-    # Clean and convert to lowercase the input query
     input_query = input_query.strip().lower()
     retailer_search = exact_match_edit_distance(input_query, offers_df, "RETAILER")
     brand_search = exact_match_edit_distance(input_query, offers_df, "BRAND")
-    # initial_search = offers_df[retailer_search or brand_search]
     initial_search = pd.concat([retailer_search, brand_search], ignore_index=True, sort=False)
     print("initial_search:", initial_search, initial_search.shape)
     if initial_search.shape[0]:
         return initial_search
     else:
         semantic_searched_brands = obj_semantic_search.semantic_search_offers(input_query)
-        print("semantic_searched_brands")
-        print(semantic_searched_brands)
         # Create an empty DataFrame with the desired columns
         filtered_offers = pd.DataFrame(columns=['OFFER', 'RETAILER', 'BRAND', 'score'])
-
         # Iterate through the semantic_searched_brands and offers_df to append rows
         for brand, score in semantic_searched_brands:
             brand_offers = offers_df[offers_df['BRAND'] == brand]
@@ -55,18 +47,10 @@ def exact_match_edit_distance(query, df, column_name, threshold=90):
     # Iterate through the rows of the dataframe
     for index, row in df.iterrows():
         text_to_match = row[column_name]
-
         # Calculate the edit (Levenshtein) distance
         similarity_score = fuzz.ratio(query.lower(), text_to_match.lower())
-
         row['score']=round(similarity_score/100, 3)
         # Check if the similarity score is above the threshold
         if similarity_score >= threshold:
             matching_results.append(row)
-
     return pd.DataFrame(matching_results)
-
-# path_brand = f"data/brand_category.csv"
-# brand_df = pd.read_csv(path_brand, dtype=str).fillna("")
-# target_col = 'BRAND'
-# print(exact_match_edit_distance('dawn', brand_df, target_col))

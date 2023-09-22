@@ -1,5 +1,7 @@
 {
-    "cache_folder" : "models",
-    "dataset_path": "data",
-    "embedding_model": "all-MiniLM-L6-v2"
+    "embedding_name": "all-MiniLM-L6-v2",
+    "embedding_cache_path" : "models/embeddings.pt",
+    "model_cache_folder": "models",
+    "category_csv_path": "data/categories.csv",
+    "brand_csv_path": "data/brand_category.csv"
 }
