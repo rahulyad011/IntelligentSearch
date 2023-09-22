@@ -5,14 +5,24 @@ from PIL import Image
 
 from search import find_match
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,  # Set the log level (e.g., INFO, DEBUG, WARNING)
+    format='%(asctime)s [%(levelname)s] %(message)s',  # Define log format
+    filename='logs.log'  # Specify the log file name (optional)
+)
+
 # Page setup
 im = Image.open("search-icon.jpeg")
 st.set_page_config(page_title="Fetch Offers", page_icon=im, layout="wide")
 st.image(im, width=100)
 st.title("Fetch Offers")
 
-text_search = st.text_input("Search Offers by Retailer or Brand", value="")
+text_search = st.text_input("Search Offers by Retailer, Brand or Category", value="")
+logging.debug("User search for offers with query:"+str(text_search))
 df_search_results = find_match(text_search)
+logging.debug("Search Results:"+str(df_search_results))
 
 N_cards_per_row = 3
 if text_search:

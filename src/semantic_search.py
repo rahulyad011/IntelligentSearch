@@ -2,10 +2,18 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import SentenceTransformer, util, CrossEncoder
 import torch
 
 import json
+
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,  # Set the log level (e.g., INFO, DEBUG, WARNING)
+    format='%(asctime)s [%(levelname)s] %(message)s',  # Define log format
+    filename='logs.log'  # Specify the log file name (optional)
+)
 
 config_file_path = "..\config.json"  # Change this to the path of your config file
 
@@ -14,17 +22,8 @@ class SemanticSearch():
     brand_df = None
     embedder = None
     embedding_cache_path=None
-    # def __init__(self) -> None:
-    #     config = self.load_config(config_file)
-    #     self.embedder = SentenceTransformer('all-MiniLM-L6-v2', cache_folder='models')
-    #     path_category = f"data/categories.csv"
-    #     self.category_df = pd.read_csv(path_category, dtype=str).fillna("")
-    #     self.category_df['PRODUCT_CATEGORY'] = self.category_df['PRODUCT_CATEGORY'].str.strip().str.lower()
-    #     path_brand = f"data/brand_category.csv"
-    #     self.brand_df = pd.read_csv(path_brand, dtype=str).fillna("")
-    #     self.brand_df['BRAND'] = self.brand_df['BRAND'].str.strip().str.lower()
-    #     self.brand_df = self.brand_df.rename(columns={"BRAND_BELONGS_TO_CATEGORY": "PRODUCT_CATEGORY"})
-    #     self.brand_df['PRODUCT_CATEGORY'] = self.brand_df['PRODUCT_CATEGORY'].str.strip().str.lower()
+    cross_encoder = None
+    max_offer = 0
 
     def __init__(self) -> None:
         # Load configuration from config.json
@@ -42,8 +41,14 @@ class SemanticSearch():
         self.embedding_cache_path = config["embedding_cache_path"]
         category_csv_path = config["category_csv_path"]
         brand_csv_path = config["brand_csv_path"]
+        cross_encoder_model_name = config["cross_encoder_model"]
+        self.max_offer = config["max_offers_visible"]
 
+        #load biencoder model
         self.embedder = SentenceTransformer(embedding_name, cache_folder=model_cache_folder)
+
+        #load cross encoder model
+        self.cross_encoder_model = CrossEncoder(cross_encoder_model_name)
 
         # Load category data
         self.category_df = pd.read_csv(category_csv_path, dtype=str).fillna("")
@@ -74,29 +79,30 @@ class SemanticSearch():
         embedding_path=os.path.join(script_dir, '..', self.embedding_cache_path)
         if not os.path.exists(embedding_path):
             # read your corpus etc
+            logging.debug("stored embedding not found")
             corpus_sentences = self.load_categories(self.category_df, 'PRODUCT_CATEGORY')
-            print("Encoding the corpus. This might take a while")
+            logging.debug("Encoding the category corpus. This might take a while")
             corpus_embeddings = self.embedder.encode(corpus_sentences, show_progress_bar=True, convert_to_numpy=True)
             corpus_embeddings = corpus_embeddings / np.linalg.norm(corpus_embeddings, axis=1, keepdims=True)
 
-            print("Storing file on disc")
+            logging.debug("Storing embedding file on the drive")
             with open(embedding_path, "wb") as fOut:
                 pickle.dump({'sentences': corpus_sentences, 'embeddings': corpus_embeddings}, fOut)
         else:
-            print("Loading pre-computed embeddings from disc")
+            logging.debug("Loading pre-computed saved embeddings from drive")
             with open(embedding_path, "rb") as fIn:
                 cache_data = pickle.load(fIn)
                 corpus_sentences = cache_data['sentences']
                 corpus_embeddings = cache_data['embeddings']
         return corpus_sentences, corpus_embeddings
 
-    def semantic_search_offers(self,user_query):
+    def semantic_search_offers(self, user_query, df_offers):
         data = self.load_categories(self.category_df, 'PRODUCT_CATEGORY')
         sentence_data, embeddings_saved = self.load_embeddings(data)
         categories = self.semantic_search_category(sentence_data, embeddings_saved, user_query)
-        print("categories: ", categories)
         brands = self.exact_brand_match(categories)
-        return brands
+        offers_selected = self.filter_and_rerank_offers(df_offers, brands, user_query)
+        return offers_selected
 
     def semantic_search_category(self, sentences, embeddings, user_query):
         # Find the closest 5 sentences of the corpus for each query sentence based on cosine similarity
@@ -104,17 +110,12 @@ class SemanticSearch():
         query_embedding = self.embedder.encode(user_query, convert_to_tensor=True)
         # we can also use util.semantic_search to perform cosine similarty + topk
         hits = util.semantic_search(query_embedding, embeddings, top_k=top_k)
-        for hit in hits[0]:
-            print(hit)
-            print(self.category_df.iloc[int(hit['corpus_id'])], "(Score: {:.4f})".format(hit['score']))
-        # Get the index of the most similar category
         # Retrieve the most similar categories in a dataframe
-        threshold_match_category = 0.5
+        threshold_match_category = 0.2
         matched_categories = set()
         for doc in hits[0]:
             matched = self.category_df.iloc[int(doc['corpus_id'])]['PRODUCT_CATEGORY']
             if doc['score'] >= threshold_match_category:
-                print("selected category: ", matched)
                 matched_categories.add((matched, doc['score']))
         matched_categories_list = list(matched_categories)
         # Sort the matched categories by doc['score'] in descending order
@@ -139,3 +140,36 @@ class SemanticSearch():
         # Sort the matched categories by doc['score'] in descending order
         sorted_brands = sorted(matched_brands_list, key=lambda x: x[1], reverse=True)
         return sorted_brands
+
+    def filter_and_rerank_offers(self, df_offers, semantic_searched_brands, input_query):
+        brand_offers_all_list = []
+        for brand, score in semantic_searched_brands:
+            brand_offers = df_offers[df_offers['BRAND'] == brand].copy()
+            if brand_offers.empty:
+                continue
+            brand_offers['score']=score
+            brand_offers_all_list.append(brand_offers)
+        if brand_offers_all_list:
+            brand_offers_all = pd.concat(brand_offers_all_list, ignore_index=True)
+        else:
+            # empty dataframe
+            return pd.DataFrame()
+        # select 40 or less offers from semantic search
+        brand_offers_all = brand_offers_all.iloc[:40]
+        # Extract offer descriptions for the current brand
+        offer_descriptions = brand_offers_all['OFFER'].tolist()
+        # Create a list of tuples where the first element is the query (input_query)
+        # and the second element is the offer description
+        cross_inp = [(input_query, offer) for offer in offer_descriptions]
+        # Score all offers for the current query with the cross_encoder
+        cross_scores = self.cross_encoder_model.predict(cross_inp)
+        min_score = np.min(cross_scores)
+        max_score = np.max(cross_scores)
+        normalized_scores = (cross_scores - min_score) / (max_score - min_score)
+        weighted_scores = brand_offers_all['score']*normalized_scores
+        brand_offers_all['cross-score'] = cross_scores
+        brand_offers_all['score'] = np.round(weighted_scores,2)
+        # Sort the offers by cross-encoder score in descending order
+        brand_offers_all = brand_offers_all.sort_values(by='score', ascending=False)
+        top_offers = brand_offers_all.iloc[:self.max_offer].copy()
+        return top_offers

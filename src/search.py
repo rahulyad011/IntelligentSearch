@@ -4,6 +4,14 @@ from fuzzywuzzy import fuzz
 
 from semantic_search import SemanticSearch
 
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,  # Set the log level (e.g., INFO, DEBUG, WARNING)
+    format='%(asctime)s [%(levelname)s] %(message)s',  # Define log format
+    filename='logs.log'  # Specify the log file name (optional)
+)
+
 # Connect to the Datasets
 path_offers = f"data/offer_retailer.csv"
 path_brand = f"data/brand_category.csv"
@@ -17,34 +25,20 @@ obj_semantic_search = SemanticSearch()
 
 def find_match(input_query):
     input_query = input_query.strip().lower()
+    logging.debug("exact match with edit distance enabled")
     retailer_search = exact_match_edit_distance(input_query, offers_df, "RETAILER")
     brand_search = exact_match_edit_distance(input_query, offers_df, "BRAND")
     initial_search = pd.concat([retailer_search, brand_search], ignore_index=True, sort=False)
-    print("initial_search:", initial_search, initial_search.shape)
     if initial_search.shape[0]:
         return initial_search
     else:
-        semantic_searched_brands = obj_semantic_search.semantic_search_offers(input_query)
-        # Create an empty DataFrame with the desired columns
-        filtered_offers = pd.DataFrame(columns=['OFFER', 'RETAILER', 'BRAND', 'score'])
-        # Iterate through the semantic_searched_brands and offers_df to append rows
-        for brand, score in semantic_searched_brands:
-            brand_offers = offers_df[offers_df['BRAND'] == brand]
-            for _, row in brand_offers.iterrows():
-                # Copy the row to avoid modifying the original DataFrame
-                offer_details = row.copy()
-                # Set the 'score' value for this row
-                offer_details['score'] = round(score,3)
-                # Append the modified row to the filtered_offers DataFrame
-                filtered_offers = pd.concat([filtered_offers, offer_details.to_frame().T], ignore_index=True)
-        # Now, filtered_offers contains the 'score' column with values set correctly
-        return filtered_offers
+        logging.debug("semantic similarity match enabled")
+        semantic_searched_offers = obj_semantic_search.semantic_search_offers(input_query, offers_df)
+        return semantic_searched_offers
 
 # Function to perform exact match search with edit distance
 def exact_match_edit_distance(query, df, column_name, threshold=90):
-    # Create an empty list to store matching results
     matching_results = []
-    # Iterate through the rows of the dataframe
     for index, row in df.iterrows():
         text_to_match = row[column_name]
         # Calculate the edit (Levenshtein) distance
