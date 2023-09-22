@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import os
+import os, sys
 import pickle
 from sentence_transformers import SentenceTransformer, util, CrossEncoder
 import torch
@@ -28,7 +28,7 @@ class SemanticSearch():
     def __init__(self) -> None:
         # Load configuration from config.json
         # Get the path to the directory containing config.json
-        config_dir = os.path.dirname(__file__)  # Assuming this code is in your_code.py
+        config_dir = os.path.dirname(__file__)
 
         # Construct the path to config.json
         config_file_path = os.path.join(config_dir, '..', 'config.json')
@@ -51,11 +51,21 @@ class SemanticSearch():
         self.cross_encoder_model = CrossEncoder(cross_encoder_model_name)
 
         # Load category data
-        self.category_df = pd.read_csv(category_csv_path, dtype=str).fillna("")
+        try:
+            self.category_df = pd.read_csv(category_csv_path, dtype=str).fillna("")
+        except FileNotFoundError:
+            # Handle the case where the CSV file does not exist
+            print(f"Error: The path provided for data file does not exist.")
+            sys.exit(1)
         self.category_df['PRODUCT_CATEGORY'] = self.category_df['PRODUCT_CATEGORY'].str.strip().str.lower()
 
         # Load brand data
-        self.brand_df = pd.read_csv(brand_csv_path, dtype=str).fillna("")
+        try:
+            self.brand_df = pd.read_csv(brand_csv_path, dtype=str).fillna("")
+        except FileNotFoundError:
+            # Handle the case where the CSV file does not exist
+            print(f"Error: The path provided for data file does not exist.")
+            sys.exit(1)
         self.brand_df['BRAND'] = self.brand_df['BRAND'].str.strip().str.lower()
         self.brand_df = self.brand_df.rename(columns={'BRAND_BELONGS_TO_CATEGORY': 'PRODUCT_CATEGORY'})
         self.brand_df['PRODUCT_CATEGORY'] = self.brand_df['PRODUCT_CATEGORY'].str.strip().str.lower()
@@ -77,24 +87,28 @@ class SemanticSearch():
         #load embedding file if exist
         script_dir = os.path.dirname(os.path.abspath(__file__))
         embedding_path=os.path.join(script_dir, '..', self.embedding_cache_path)
-        if not os.path.exists(embedding_path):
-            # read your corpus etc
-            logging.debug("stored embedding not found")
-            corpus_sentences = self.load_categories(self.category_df, 'PRODUCT_CATEGORY')
-            logging.debug("Encoding the category corpus. This might take a while")
-            corpus_embeddings = self.embedder.encode(corpus_sentences, show_progress_bar=True, convert_to_numpy=True)
-            corpus_embeddings = corpus_embeddings / np.linalg.norm(corpus_embeddings, axis=1, keepdims=True)
+        try:
+            if not os.path.exists(embedding_path):
+                # read your corpus etc
+                logging.debug("stored embedding not found")
+                corpus_sentences = self.load_categories(self.category_df, 'PRODUCT_CATEGORY')
+                logging.debug("Encoding the category corpus. This might take a while")
+                corpus_embeddings = self.embedder.encode(corpus_sentences, show_progress_bar=True, convert_to_numpy=True)
+                corpus_embeddings = corpus_embeddings / np.linalg.norm(corpus_embeddings, axis=1, keepdims=True)
 
-            logging.debug("Storing embedding file on the drive")
-            with open(embedding_path, "wb") as fOut:
-                pickle.dump({'sentences': corpus_sentences, 'embeddings': corpus_embeddings}, fOut)
-        else:
-            logging.debug("Loading pre-computed saved embeddings from drive")
-            with open(embedding_path, "rb") as fIn:
-                cache_data = pickle.load(fIn)
-                corpus_sentences = cache_data['sentences']
-                corpus_embeddings = cache_data['embeddings']
-        return corpus_sentences, corpus_embeddings
+                logging.debug("Storing embedding file on the drive")
+                with open(embedding_path, "wb") as fOut:
+                    pickle.dump({'sentences': corpus_sentences, 'embeddings': corpus_embeddings}, fOut)
+            else:
+                logging.debug("Loading pre-computed saved embeddings from drive")
+                with open(embedding_path, "rb") as fIn:
+                    cache_data = pickle.load(fIn)
+                    corpus_sentences = cache_data['sentences']
+                    corpus_embeddings = cache_data['embeddings']
+            return corpus_sentences, corpus_embeddings
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            sys.exit(1)
 
     def semantic_search_offers(self, user_query, df_offers):
         data = self.load_categories(self.category_df, 'PRODUCT_CATEGORY')

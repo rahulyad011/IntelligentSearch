@@ -4,6 +4,7 @@
     "model_cache_folder": "models",
     "category_csv_path": "data/categories.csv",
     "brand_csv_path": "data/brand_category.csv",
+    "offers_csv_path": "data/offer_retailer.csv",
     "cross_encoder_model":"cross-encoder/ms-marco-MiniLM-L-6-v2",
     "max_offers_visible":12
 }

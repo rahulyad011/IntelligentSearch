@@ -1,6 +1,8 @@
 import pandas as pd
 import fuzzywuzzy
 from fuzzywuzzy import fuzz
+import os, sys
+import json
 
 from semantic_search import SemanticSearch
 
@@ -11,12 +13,28 @@ logging.basicConfig(
     format='%(asctime)s [%(levelname)s] %(message)s',  # Define log format
     filename='logs.log'  # Specify the log file name (optional)
 )
+# Load configuration from config.json
+config_file_path = "..\config.json"  # Change this to the path of your config file
+config_dir = os.path.dirname(__file__)
+
+# Construct the path to config.json
+config_file_path = os.path.join(config_dir, '..', 'config.json')
+
+with open(config_file_path, 'r') as config_file:
+    config = json.load(config_file)
+
+path_offers = config["offers_csv_path"]
+path_brand = config["brand_csv_path"]
 
 # Connect to the Datasets
-path_offers = f"data/offer_retailer.csv"
-path_brand = f"data/brand_category.csv"
-offers_df = pd.read_csv(path_offers, dtype=str).fillna("")
-brand_df = pd.read_csv(path_brand, dtype=str).fillna("")
+try:
+    offers_df = pd.read_csv(path_offers, dtype=str).fillna("")
+    brand_df = pd.read_csv(path_brand, dtype=str).fillna("")
+except FileNotFoundError:
+    # Handle the case where the CSV file does not exist
+    print(f"Error: The path provided for data files does not exist.")
+    sys.exit(1)
+
 # Clean and convert to lowercase in offer_data
 offers_df['BRAND'] = offers_df['BRAND'].str.strip().str.lower()
 offers_df['RETAILER'] = offers_df['RETAILER'].str.strip().str.lower()
